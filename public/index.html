@@ -767,14 +767,19 @@ async function processImage() {
 
 async function extractWordsWithGemini(base64Image) {
   // Call our secure Vercel serverless function
-  const response = await fetch("/api/extract-words", {
+  // Use full URL if on Firebase, relative path if on Vercel
+  const apiUrl = window.location.hostname.includes('vercel.app')
+    ? "/api/extract-words"
+    : "https://spelling-champ-a1h20mnh4-forgys-projects.vercel.app/api/extract-words";
+
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image: base64Image })
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({error: "Unknown error"}));
     throw new Error(error.error || "Failed to process image");
   }
 
