@@ -129,10 +129,10 @@ label.toggle input { width: 22px; height: 22px; accent-color: var(--gold); }
 .modal-close:hover { color: var(--red); }
 .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
 .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #000; }
-.tab { font-weight: 800; padding: 10px 16px; background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; color: var(--muted); }
+.tab { font-weight: 800; padding: 10px 16px; background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; color: var(--muted); box-shadow: none; }
+.tab:active { transform: none; }
 .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
+.grade-tab { font-family: var(--display); font-size: 1.05rem; }
 .word-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 400px; overflow-y: auto; }
 .word-item { background: #0b0f1c; border: 2px solid var(--night-2); border-radius: 8px; padding: 12px; display: flex; gap: 12px; align-items: flex-start; }
 .word-item.custom { border-color: var(--gold); }
@@ -547,11 +547,22 @@ $("punchBtn").onclick = submit;
 $("form").addEventListener("submit", e => { e.preventDefault(); submit(); });
 
 /* ---------- Settings & Word Management ---------- */
-let customWords = JSON.parse(localStorage.getItem("spellingChampCustomWords") || "[]");
+let customWords2 = JSON.parse(localStorage.getItem("spellingChampCustomWords2") || "[]");
+let customWordsK = JSON.parse(localStorage.getItem("spellingChampCustomWordsK") || "[]");
 let geminiApiKey = localStorage.getItem("spellingChampGeminiKey") || "";
+let settingsGrade = "2"; // Current grade in settings
 
 function saveCustomWords() {
-  localStorage.setItem("spellingChampCustomWords", JSON.stringify(customWords));
+  localStorage.setItem("spellingChampCustomWords2", JSON.stringify(customWords2));
+  localStorage.setItem("spellingChampCustomWordsK", JSON.stringify(customWordsK));
+}
+
+function getCurrentCustomWords() {
+  return settingsGrade === "2" ? customWords2 : customWordsK;
+}
+
+function getCurrentBaseWords() {
+  return settingsGrade === "2" ? WORDS : WORDS_K;
 }
 
 function saveGeminiKey(key) {
@@ -561,38 +572,50 @@ function saveGeminiKey(key) {
 
 function openSettings() {
   $("settingsModal").hidden = false;
-  renderWordList();
+  settingsGrade = level; // Open to current game level
+  switchGrade(settingsGrade);
 }
 
 function closeSettings() {
   $("settingsModal").hidden = true;
 }
 
+function switchGrade(grade) {
+  settingsGrade = grade;
+  document.querySelectorAll(".grade-tab").forEach(t => t.classList.remove("active"));
+  $("gradeTab" + (grade === "2" ? "2" : "K")).classList.add("active");
+
+  // Hide championship toggle for kindergarten
+  $("champToggleContainer").hidden = grade === "k";
+
+  renderWordList();
+}
+
 function switchTab(tabName) {
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-  $(tabName + "-tab").classList.add("active");
-  $(tabName + "-content").classList.add("active");
+  // No longer needed - keeping for backwards compat
 }
 
 function renderWordList() {
   const container = $("wordListContainer");
-  const allWords = [...WORDS, ...customWords];
+  const baseWords = getCurrentBaseWords();
+  const customWords = getCurrentCustomWords();
+  const allWords = [...baseWords, ...customWords];
 
-  $("wordCount").textContent = `${allWords.length} words total (${customWords.length} custom)`;
+  const gradeName = settingsGrade === "2" ? "2nd Grade" : "Kindergarten";
+  $("wordCount").textContent = `${gradeName}: ${allWords.length} words total (${customWords.length} custom)`;
 
   container.innerHTML = "";
   allWords.forEach((word, idx) => {
-    const isCustom = idx >= WORDS.length;
+    const isCustom = idx >= baseWords.length;
     const div = document.createElement("div");
     div.className = "word-item" + (isCustom ? " custom" : "");
     div.innerHTML = `
       <div class="word-content">
-        <div class="word-text">${word.w}${word.champ ? " 🏆" : ""}</div>
+        <div class="word-text">${word.w}${word.champ ? " 🏆" : ""}${word.pic ? " " + word.pic : ""}</div>
         <div class="word-sentence">${word.s}</div>
       </div>
       <div class="word-actions">
-        ${isCustom ? '<button type="button" class="icon-btn danger" onclick="deleteWord(' + (idx - WORDS.length) + ')">🗑️</button>' : ''}
+        ${isCustom ? '<button type="button" class="icon-btn danger" onclick="deleteWord(' + (idx - baseWords.length) + ')">🗑️</button>' : ''}
       </div>
     `;
     container.appendChild(div);
@@ -610,6 +633,7 @@ function addWord(e) {
     return;
   }
 
+  const customWords = getCurrentCustomWords();
   customWords.push({ w: word, s: sentence, champ: isChamp });
   saveCustomWords();
   renderWordList();
@@ -621,6 +645,7 @@ function addWord(e) {
 
 function deleteWord(idx) {
   if (confirm("Delete this word?")) {
+    const customWords = getCurrentCustomWords();
     customWords.splice(idx, 1);
     saveCustomWords();
     renderWordList();
@@ -659,11 +684,11 @@ async function processImage() {
       const words = await extractWordsWithGemini(base64);
 
       if (words && words.length > 0) {
+        const customWords = getCurrentCustomWords();
         customWords.push(...words);
         saveCustomWords();
-        alert(`Added ${words.length} words!`);
+        alert(`Added ${words.length} words to ${settingsGrade === "2" ? "2nd Grade" : "Kindergarten"}!`);
         renderWordList();
-        switchTab("manage");
       } else {
         alert("No words found in the image. Try a clearer photo.");
       }
@@ -723,23 +748,29 @@ async function extractWordsWithGemini(base64Image) {
 const originalWordList = wordList;
 window.wordList = function() {
   const base = originalWordList();
+  const customWords = level === "2" ? customWords2 : customWordsK;
+
   if (level === "2") {
     const withCustom = [...base, ...customWords];
     return $("chk-challenge").checked ? withCustom : withCustom.filter(w => !w.champ);
   }
-  return base;
+  // Kindergarten
+  return [...base, ...customWords];
 };
 
-$("settingsBtn").onclick = openSettings;
-$("closeSettings").onclick = closeSettings;
-$("settingsModal").onclick = (e) => { if (e.target.id === "settingsModal") closeSettings(); };
-$("manageTab").onclick = () => switchTab("manage");
-$("importTab").onclick = () => switchTab("import");
-$("addWordForm").addEventListener("submit", addWord);
-$("saveApiKeyBtn").onclick = saveApiKey;
-$("processBtn").onclick = processImage;
-$("imageInput").onchange = () => { $("processBtn").disabled = !$("imageInput").files[0]; };
-$("geminiKey").value = geminiApiKey;
+// Initialize settings after DOM is loaded
+document.addEventListener("DOMContentLoaded", () => {
+  $("settingsBtn").onclick = openSettings;
+  $("closeSettings").onclick = closeSettings;
+  $("settingsModal").onclick = (e) => { if (e.target.id === "settingsModal") closeSettings(); };
+  $("gradeTab2").onclick = () => switchGrade("2");
+  $("gradeTabK").onclick = () => switchGrade("k");
+  $("addWordForm").addEventListener("submit", addWord);
+  $("saveApiKeyBtn").onclick = saveApiKey;
+  $("processBtn").onclick = processImage;
+  $("imageInput").onchange = () => { $("processBtn").disabled = !$("imageInput").files[0]; };
+  $("geminiKey").value = geminiApiKey;
+});
 
 </script>
 
@@ -747,58 +778,60 @@ $("geminiKey").value = geminiApiKey;
 <div id="settingsModal" class="modal-overlay" hidden>
   <div class="modal">
     <div class="modal-header">
-      <h2>SETTINGS</h2>
+      <h2>WORD MANAGEMENT</h2>
       <button type="button" class="modal-close" id="closeSettings" aria-label="Close">✕</button>
     </div>
     <div class="modal-body">
       <div class="tabs">
-        <button type="button" class="tab active" id="manage-tab">Manage Words</button>
-        <button type="button" class="tab" id="import-tab">Import from Photo</button>
+        <button type="button" class="tab grade-tab active" id="gradeTab2">2nd Grade</button>
+        <button type="button" class="tab grade-tab" id="gradeTabK">Kindergarten</button>
       </div>
 
-      <!-- Manage Words Tab -->
-      <div class="tab-content active" id="manage-content">
-        <form id="addWordForm" class="add-word-form">
-          <div class="form-group">
-            <label for="newWord">Word</label>
-            <input type="text" id="newWord" placeholder="e.g., example" required>
-          </div>
-          <div class="form-group">
-            <label for="newSentence">Sentence</label>
-            <textarea id="newSentence" placeholder="Use the word in a sentence..." required></textarea>
-          </div>
-          <div class="form-group">
-            <label class="toggle">
-              <input type="checkbox" id="newChamp">
-              Championship word
-            </label>
-          </div>
-          <button type="submit" class="btn-gold">Add Word</button>
-        </form>
-
-        <div class="word-count" id="wordCount"></div>
-        <div class="word-list" id="wordListContainer"></div>
-      </div>
-
-      <!-- Import from Photo Tab -->
-      <div class="tab-content" id="import-content">
-        <div class="api-key-section">
-          <div class="form-group">
-            <label for="geminiKey">Gemini API Key</label>
-            <input type="password" id="geminiKey" placeholder="Enter your Google Gemini API key">
-            <small>Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--gold);">aistudio.google.com/apikey</a></small>
-          </div>
-          <button type="button" class="btn-gold" id="saveApiKeyBtn">Save API Key</button>
+      <!-- Camera Section (always visible) -->
+      <div class="api-key-section">
+        <h3 style="font-family: var(--display); color: var(--gold); font-size: 1.1rem; margin: 0 0 12px 0;">📷 Camera</h3>
+        <div class="form-group">
+          <label for="geminiKey">Gemini API Key</label>
+          <input type="password" id="geminiKey" placeholder="Enter your Google Gemini API key">
+          <small>Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--gold);">aistudio.google.com/apikey</a></small>
         </div>
+        <button type="button" class="btn-gold" id="saveApiKeyBtn">Save API Key</button>
 
-        <div class="camera-section">
-          <p style="color: var(--muted); font-weight: 700;">Take or upload a photo of a spelling word list</p>
+        <div class="camera-section" style="margin-top: 16px;">
+          <p style="color: var(--muted); font-weight: 700; margin-top: 16px;">Take or upload a photo of your word list</p>
           <input type="file" id="imageInput" accept="image/*" capture="environment">
-          <button type="button" class="btn-gold big" onclick="$('imageInput').click()">📷 Choose Photo</button>
+          <button type="button" class="btn-gold big" onclick="document.getElementById('imageInput').click()">📷 Take / Upload Photo</button>
           <div id="imagePreview" class="preview" hidden></div>
           <div id="processing" class="processing" hidden>Processing with Gemini AI...</div>
           <button type="button" class="btn-wide" id="processBtn" style="margin-top: 16px;" disabled>Extract Words</button>
         </div>
+      </div>
+
+      <!-- Add Word Form -->
+      <form id="addWordForm" class="add-word-form">
+        <h3 style="font-family: var(--display); color: var(--gold); font-size: 1.1rem; margin: 0 0 12px 0;">➕ Add Word Manually</h3>
+        <div class="form-group">
+          <label for="newWord">Word</label>
+          <input type="text" id="newWord" placeholder="e.g., example" required>
+        </div>
+        <div class="form-group">
+          <label for="newSentence">Sentence</label>
+          <textarea id="newSentence" placeholder="Use the word in a sentence..." required></textarea>
+        </div>
+        <div class="form-group" id="champToggleContainer">
+          <label class="toggle">
+            <input type="checkbox" id="newChamp">
+            Championship word
+          </label>
+        </div>
+        <button type="submit" class="btn-gold">Add Word</button>
+      </form>
+
+      <!-- Word List -->
+      <div style="margin-top: 20px;">
+        <h3 style="font-family: var(--display); color: var(--gold); font-size: 1.1rem; margin: 0 0 8px 0;">📝 All Words</h3>
+        <div class="word-count" id="wordCount"></div>
+        <div class="word-list" id="wordListContainer"></div>
       </div>
     </div>
   </div>
