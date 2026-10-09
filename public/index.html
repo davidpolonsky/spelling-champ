@@ -767,10 +767,8 @@ async function processImage() {
 
 async function extractWordsWithGemini(base64Image) {
   // Call our secure Vercel serverless function
-  // Use full URL if on Firebase, relative path if on Vercel
-  const apiUrl = window.location.hostname.includes('vercel.app')
-    ? "/api/extract-words"
-    : "https://spelling-champ-a1h20mnh4-forgys-projects.vercel.app/api/extract-words";
+  // Use relative path - works on both Firebase (deployed to Vercel) and Vercel direct
+  const apiUrl = "/api/extract-words";
 
   const response = await fetch(apiUrl, {
     method: "POST",
