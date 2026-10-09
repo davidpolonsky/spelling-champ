@@ -549,7 +549,6 @@ $("form").addEventListener("submit", e => { e.preventDefault(); submit(); });
 /* ---------- Settings & Word Management ---------- */
 let customWords2 = JSON.parse(localStorage.getItem("spellingChampCustomWords2") || "[]");
 let customWordsK = JSON.parse(localStorage.getItem("spellingChampCustomWordsK") || "[]");
-let geminiApiKey = localStorage.getItem("spellingChampGeminiKey") || "";
 let settingsGrade = "2"; // Current grade in settings
 
 function saveCustomWords() {
@@ -565,10 +564,7 @@ function getCurrentBaseWords() {
   return settingsGrade === "2" ? WORDS : WORDS_K;
 }
 
-function saveGeminiKey(key) {
-  geminiApiKey = key;
-  localStorage.setItem("spellingChampGeminiKey", key);
-}
+// API key is hardcoded, no need to save
 
 function openSettings() {
   $("settingsModal").hidden = false;
@@ -652,23 +648,11 @@ function deleteWord(idx) {
   }
 }
 
-function saveApiKey() {
-  const key = $("geminiKey").value.trim();
-  if (key) {
-    saveGeminiKey(key);
-    alert("API key saved!");
-  }
-}
+// API key is hardcoded
 
 async function processImage() {
   const file = $("imageInput").files[0];
   if (!file) return;
-
-  if (!geminiApiKey) {
-    alert("Please enter your Gemini API key first!");
-    $("geminiKey").focus();
-    return;
-  }
 
   const preview = $("imagePreview");
   preview.innerHTML = '<img src="' + URL.createObjectURL(file) + '" alt="Preview">';
@@ -707,41 +691,20 @@ async function processImage() {
 }
 
 async function extractWordsWithGemini(base64Image) {
-  const prompt = `Extract spelling words from this image. Look for a list of spelling words, typically from a school worksheet or word list. Return ONLY a JSON array of objects with this format: [{"word": "example", "sentence": "Use it in a sentence."}]. If you see numbered words with example sentences, extract both. If there are no clear spelling words, return an empty array. Do not include any markdown formatting or explanation, just the raw JSON array.`;
-
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
+  // Call our secure Vercel serverless function
+  const response = await fetch("/api/extract-words", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: "image/jpeg", data: base64Image } }
-        ]
-      }]
-    })
+    body: JSON.stringify({ image: base64Image })
   });
 
   if (!response.ok) {
-    throw new Error("Gemini API error: " + response.statusText);
+    const error = await response.json();
+    throw new Error(error.error || "Failed to process image");
   }
 
   const data = await response.json();
-  const text = data.candidates[0].content.parts[0].text;
-
-  // Extract JSON from response (in case it's wrapped in markdown)
-  let jsonText = text.trim();
-  if (jsonText.startsWith("```")) {
-    jsonText = jsonText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  }
-
-  const parsed = JSON.parse(jsonText);
-
-  // Convert to our format
-  return parsed.map(item => ({
-    w: (item.word || item.w || "").toLowerCase().trim(),
-    s: item.sentence || item.s || `Example sentence for ${item.word || item.w}.`
-  })).filter(w => w.w);
+  return data.words || [];
 }
 
 // Update wordList() function to include custom words
@@ -766,10 +729,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("gradeTab2").onclick = () => switchGrade("2");
   $("gradeTabK").onclick = () => switchGrade("k");
   $("addWordForm").addEventListener("submit", addWord);
-  $("saveApiKeyBtn").onclick = saveApiKey;
   $("processBtn").onclick = processImage;
   $("imageInput").onchange = () => { $("processBtn").disabled = !$("imageInput").files[0]; };
-  $("geminiKey").value = geminiApiKey;
 });
 
 </script>
@@ -787,18 +748,11 @@ document.addEventListener("DOMContentLoaded", () => {
         <button type="button" class="tab grade-tab" id="gradeTabK">Kindergarten</button>
       </div>
 
-      <!-- Camera Section (always visible) -->
+      <!-- Camera Section -->
       <div class="api-key-section">
         <h3 style="font-family: var(--display); color: var(--gold); font-size: 1.1rem; margin: 0 0 12px 0;">📷 Camera</h3>
-        <div class="form-group">
-          <label for="geminiKey">Gemini API Key</label>
-          <input type="password" id="geminiKey" placeholder="Enter your Google Gemini API key">
-          <small>Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--gold);">aistudio.google.com/apikey</a></small>
-        </div>
-        <button type="button" class="btn-gold" id="saveApiKeyBtn">Save API Key</button>
-
-        <div class="camera-section" style="margin-top: 16px;">
-          <p style="color: var(--muted); font-weight: 700; margin-top: 16px;">Take or upload a photo of your word list</p>
+        <div class="camera-section">
+          <p style="color: var(--muted); font-weight: 700;">Take or upload a photo of your word list</p>
           <input type="file" id="imageInput" accept="image/*" capture="environment">
           <button type="button" class="btn-gold big" onclick="document.getElementById('imageInput').click()">📷 Take / Upload Photo</button>
           <div id="imagePreview" class="preview" hidden></div>

@@ -2,7 +2,6 @@
 .firebase/
 firebase-debug.log
 firebase-debug.*.log
-.firebaserc
 
 # OS
 .DS_Store
@@ -14,6 +13,15 @@ firebase-debug.*.log
 .vscode/
 .idea/
 
-# Node (if you add build tools later)
+# Node
 node_modules/
 npm-debug.log
+functions/node_modules/
+
+# Environment
+.env
+.env.local
+*.secret
+
+# Backups
+*.backup
