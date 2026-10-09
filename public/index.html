@@ -581,8 +581,14 @@ function switchGrade(grade) {
   document.querySelectorAll(".grade-tab").forEach(t => t.classList.remove("active"));
   $("gradeTab" + (grade === "2" ? "2" : "K")).classList.add("active");
 
-  // Hide championship toggle for kindergarten
+  // Show/hide fields based on grade
   $("champToggleContainer").hidden = grade === "k";
+  $("batchContainer").hidden = grade === "k";
+
+  // Set default batch name for 2nd grade
+  if (grade === "2") {
+    $("newBatch").value = getTodayBatchName();
+  }
 
   renderWordList();
 }
@@ -601,21 +607,71 @@ function renderWordList() {
   $("wordCount").textContent = `${gradeName}: ${allWords.length} words total (${customWords.length} custom)`;
 
   container.innerHTML = "";
-  allWords.forEach((word, idx) => {
-    const isCustom = idx >= baseWords.length;
-    const div = document.createElement("div");
-    div.className = "word-item" + (isCustom ? " custom" : "");
-    div.innerHTML = `
-      <div class="word-content">
-        <div class="word-text">${word.w}${word.champ ? " 🏆" : ""}${word.pic ? " " + word.pic : ""}</div>
-        <div class="word-sentence">${word.s}</div>
-      </div>
-      <div class="word-actions">
-        ${isCustom ? '<button type="button" class="icon-btn danger" onclick="deleteWord(' + (idx - baseWords.length) + ')">🗑️</button>' : ''}
-      </div>
-    `;
-    container.appendChild(div);
-  });
+
+  // For 2nd grade, group custom words by batch
+  if (settingsGrade === "2" && customWords.length > 0) {
+    // Group custom words by batch
+    const batches = {};
+    customWords.forEach(word => {
+      const batch = word.batch || "Unsorted";
+      if (!batches[batch]) batches[batch] = [];
+      batches[batch].push(word);
+    });
+
+    // Render base words first
+    baseWords.forEach(word => {
+      const div = document.createElement("div");
+      div.className = "word-item";
+      div.innerHTML = `
+        <div class="word-content">
+          <div class="word-text">${word.w}${word.champ ? " 🏆" : ""}</div>
+          <div class="word-sentence">${word.s}</div>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+
+    // Render batches
+    Object.keys(batches).sort().reverse().forEach(batchName => {
+      const header = document.createElement("div");
+      header.style.cssText = "font-family: var(--display); color: var(--gold); font-size: 1rem; margin-top: 16px; margin-bottom: 8px; padding: 8px 12px; background: #0b0f1c; border-left: 4px solid var(--gold); border-radius: 4px;";
+      header.innerHTML = `📦 ${batchName} <span style="color: var(--muted); font-size: 0.85rem;">(${batches[batchName].length} words)</span>`;
+      container.appendChild(header);
+
+      batches[batchName].forEach((word, idx) => {
+        const div = document.createElement("div");
+        div.className = "word-item custom";
+        const wordIdx = customWords.indexOf(word);
+        div.innerHTML = `
+          <div class="word-content">
+            <div class="word-text">${word.w}${word.champ ? " 🏆" : ""}</div>
+            <div class="word-sentence">${word.s}</div>
+          </div>
+          <div class="word-actions">
+            <button type="button" class="icon-btn danger" onclick="deleteWord(${wordIdx})">🗑️</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    });
+  } else {
+    // Kindergarten or no custom words - simple list
+    allWords.forEach((word, idx) => {
+      const isCustom = idx >= baseWords.length;
+      const div = document.createElement("div");
+      div.className = "word-item" + (isCustom ? " custom" : "");
+      div.innerHTML = `
+        <div class="word-content">
+          <div class="word-text">${word.w}${word.champ ? " 🏆" : ""}${word.pic ? " " + word.pic : ""}</div>
+          <div class="word-sentence">${word.s}</div>
+        </div>
+        <div class="word-actions">
+          ${isCustom ? '<button type="button" class="icon-btn danger" onclick="deleteWord(' + (idx - baseWords.length) + ')">🗑️</button>' : ''}
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  }
 }
 
 function addWord(e) {
@@ -623,6 +679,7 @@ function addWord(e) {
   const word = $("newWord").value.trim().toLowerCase();
   const sentence = $("newSentence").value.trim();
   const isChamp = $("newChamp").checked;
+  const batch = settingsGrade === "2" ? ($("newBatch").value.trim() || getTodayBatchName()) : null;
 
   if (!word || !sentence) {
     alert("Please enter both a word and a sentence.");
@@ -630,13 +687,23 @@ function addWord(e) {
   }
 
   const customWords = getCurrentCustomWords();
-  customWords.push({ w: word, s: sentence, champ: isChamp });
+  const wordObj = { w: word, s: sentence, champ: isChamp };
+  if (batch) wordObj.batch = batch;
+
+  customWords.push(wordObj);
   saveCustomWords();
   renderWordList();
 
   $("newWord").value = "";
   $("newSentence").value = "";
   $("newChamp").checked = false;
+  if (settingsGrade === "2") $("newBatch").value = getTodayBatchName();
+}
+
+function getTodayBatchName() {
+  const date = new Date();
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[date.getMonth()]} ${date.getDate()}`;
 }
 
 function deleteWord(idx) {
@@ -669,7 +736,15 @@ async function processImage() {
 
       if (words && words.length > 0) {
         const customWords = getCurrentCustomWords();
-        customWords.push(...words);
+        const batch = settingsGrade === "2" ? getTodayBatchName() + " upload" : null;
+
+        // Add batch name to words for 2nd grade
+        const wordsToAdd = words.map(w => {
+          if (batch) w.batch = batch;
+          return w;
+        });
+
+        customWords.push(...wordsToAdd);
         saveCustomWords();
         alert(`Added ${words.length} words to ${settingsGrade === "2" ? "2nd Grade" : "Kindergarten"}!`);
         renderWordList();
@@ -721,16 +796,33 @@ window.wordList = function() {
   return [...base, ...customWords];
 };
 
-// Initialize settings after DOM is loaded
-document.addEventListener("DOMContentLoaded", () => {
-  $("settingsBtn").onclick = openSettings;
-  $("closeSettings").onclick = closeSettings;
-  $("settingsModal").onclick = (e) => { if (e.target.id === "settingsModal") closeSettings(); };
-  $("gradeTab2").onclick = () => switchGrade("2");
-  $("gradeTabK").onclick = () => switchGrade("k");
-  $("addWordForm").addEventListener("submit", addWord);
-  $("processBtn").onclick = processImage;
-  $("imageInput").onchange = () => { $("processBtn").disabled = !$("imageInput").files[0]; };
+// Initialize settings - wait for everything to load
+window.addEventListener("load", () => {
+  const settingsBtn = $("settingsBtn");
+  const closeBtn = $("closeSettings");
+  const modal = $("settingsModal");
+
+  if (settingsBtn) settingsBtn.onclick = openSettings;
+  if (closeBtn) closeBtn.onclick = closeSettings;
+  if (modal) modal.onclick = (e) => { if (e.target.id === "settingsModal") closeSettings(); };
+
+  const tab2 = $("gradeTab2");
+  const tabK = $("gradeTabK");
+  if (tab2) tab2.onclick = () => switchGrade("2");
+  if (tabK) tabK.onclick = () => switchGrade("k");
+
+  const form = $("addWordForm");
+  if (form) form.addEventListener("submit", addWord);
+
+  const processBtn = $("processBtn");
+  if (processBtn) processBtn.onclick = processImage;
+
+  const imageInput = $("imageInput");
+  if (imageInput) imageInput.onchange = () => { $("processBtn").disabled = !$("imageInput").files[0]; };
+
+  // Initialize batch name for 2nd grade
+  const batchInput = $("newBatch");
+  if (batchInput) batchInput.value = getTodayBatchName();
 });
 
 </script>
@@ -753,8 +845,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <h3 style="font-family: var(--display); color: var(--gold); font-size: 1.1rem; margin: 0 0 12px 0;">📷 Camera</h3>
         <div class="camera-section">
           <p style="color: var(--muted); font-weight: 700;">Take or upload a photo of your word list</p>
-          <input type="file" id="imageInput" accept="image/*" capture="environment">
-          <button type="button" class="btn-gold big" onclick="document.getElementById('imageInput').click()">📷 Take / Upload Photo</button>
+          <input type="file" id="imageInput" accept="image/*" capture="environment" style="display: none;">
+          <label for="imageInput" class="btn-gold big" style="display: inline-block; cursor: pointer; text-align: center;">📷 Take / Upload Photo</label>
           <div id="imagePreview" class="preview" hidden></div>
           <div id="processing" class="processing" hidden>Processing with Gemini AI...</div>
           <button type="button" class="btn-wide" id="processBtn" style="margin-top: 16px;" disabled>Extract Words</button>
@@ -764,6 +856,10 @@ document.addEventListener("DOMContentLoaded", () => {
       <!-- Add Word Form -->
       <form id="addWordForm" class="add-word-form">
         <h3 style="font-family: var(--display); color: var(--gold); font-size: 1.1rem; margin: 0 0 12px 0;">➕ Add Word Manually</h3>
+        <div class="form-group" id="batchContainer">
+          <label for="newBatch">Batch Name (e.g., Oct 8, Week 5)</label>
+          <input type="text" id="newBatch" placeholder="e.g., Oct 8">
+        </div>
         <div class="form-group">
           <label for="newWord">Word</label>
           <input type="text" id="newWord" placeholder="e.g., example" required>
