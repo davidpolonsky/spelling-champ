@@ -2,11 +2,16 @@
 
 A boxing-themed spelling game deployed on Firebase Hosting.
 
+## Links
+
+- **Live Site**: https://spelling-champ.net
+- **Firebase Hosting**: https://spelling-champ-872cc.web.app
+- **GitHub Repo**: https://github.com/davidpolonsky/spelling-champ
+- **Firebase Console**: https://console.firebase.google.com/project/spelling-champ-872cc/overview
+
 ## Firebase Setup
 
 - **Project ID**: `spelling-champ-872cc`
-- **Hosting URL**: https://spelling-champ-872cc.web.app
-- **Console**: https://console.firebase.google.com/project/spelling-champ-872cc/overview
 
 ## Project Structure
 
