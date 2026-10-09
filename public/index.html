@@ -117,6 +117,46 @@ label.toggle input { width: 22px; height: 22px; accent-color: var(--gold); }
 .tiles { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .tile { font: 900 1.7rem var(--body); width: 3.2rem; height: 3.2rem; padding: 0; text-transform: lowercase; background: var(--ink); }
 .tile.del { background: #0b0f1c; color: var(--ink); font-size: 1.3rem; width: 4rem; }
+
+/* Settings */
+.settings-btn { width: 44px; height: 44px; padding: 8px; background: var(--night-2); border: 2px solid #000; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+.settings-btn:hover { background: var(--gold); }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modal { background: var(--night); border: 4px solid #000; border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
+.modal-header { background: var(--night-2); padding: 16px 20px; border-bottom: 3px solid #000; display: flex; justify-content: space-between; align-items: center; }
+.modal-header h2 { font-family: var(--display); font-size: 1.5rem; margin: 0; color: var(--gold); }
+.modal-close { font-size: 1.8rem; background: none; border: none; color: var(--ink); cursor: pointer; padding: 4px 12px; line-height: 1; }
+.modal-close:hover { color: var(--red); }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #000; }
+.tab { font-weight: 800; padding: 10px 16px; background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; color: var(--muted); }
+.tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.word-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 400px; overflow-y: auto; }
+.word-item { background: #0b0f1c; border: 2px solid var(--night-2); border-radius: 8px; padding: 12px; display: flex; gap: 12px; align-items: flex-start; }
+.word-item.custom { border-color: var(--gold); }
+.word-content { flex: 1; min-width: 0; }
+.word-content .word-text { font-weight: 900; font-size: 1.1rem; color: var(--ink); letter-spacing: .05em; }
+.word-content .word-sentence { font-size: .9rem; color: var(--muted); margin-top: 4px; }
+.word-actions { display: flex; gap: 6px; }
+.icon-btn { padding: 6px 10px; font-size: .9rem; min-width: auto; background: var(--night-2); }
+.icon-btn:hover { background: var(--gold); }
+.icon-btn.danger:hover { background: var(--red); color: #fff; }
+.add-word-form { background: var(--night-2); border: 3px solid #000; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-weight: 800; color: var(--muted); margin-bottom: 6px; font-size: .9rem; }
+.form-group input, .form-group textarea { width: 100%; font: 600 1rem var(--body); padding: 10px 12px; border-radius: 8px; border: 2px solid #000; background: var(--ink); color: #141a2e; }
+.form-group textarea { resize: vertical; min-height: 60px; font-family: var(--body); }
+.camera-section { text-align: center; }
+.camera-section input[type="file"] { display: none; }
+.camera-section .preview { margin: 16px 0; border: 3px solid #000; border-radius: 10px; overflow: hidden; max-width: 100%; }
+.camera-section .preview img { display: block; width: 100%; height: auto; }
+.api-key-section { background: var(--night-2); border: 2px solid var(--gold); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+.api-key-section small { display: block; color: var(--muted); font-size: .85rem; margin-top: 8px; }
+.processing { color: var(--gold); font-weight: 800; text-align: center; padding: 20px; }
+.word-count { color: var(--muted); font-size: .9rem; font-weight: 800; margin-bottom: 12px; }
+
 @media (prefers-reduced-motion: reduce) { * { animation-duration: .01s !important; transition-duration: .01s !important; } }
 </style>
 </head><body>
@@ -127,6 +167,7 @@ label.toggle input { width: 22px; height: 22px; accent-color: var(--gold); }
       <h1>SPELLING CHAMP</h1>
       <div class="sub" id="subTitle">2nd Grade · Unit 5 · Week 1</div>
     </div>
+    <button type="button" class="settings-btn" id="settingsBtn" aria-label="Settings" title="Settings">⚙️</button>
   </header>
 
   <div class="bars" aria-hidden="true">
@@ -504,6 +545,263 @@ $("hearBtn").onclick = () => { sayWord(); if (level !== "k") $("answer").focus()
 $("sentBtn").onclick = () => { saySentence(); if (level !== "k") $("answer").focus(); };
 $("punchBtn").onclick = submit;
 $("form").addEventListener("submit", e => { e.preventDefault(); submit(); });
+
+/* ---------- Settings & Word Management ---------- */
+let customWords = JSON.parse(localStorage.getItem("spellingChampCustomWords") || "[]");
+let geminiApiKey = localStorage.getItem("spellingChampGeminiKey") || "";
+
+function saveCustomWords() {
+  localStorage.setItem("spellingChampCustomWords", JSON.stringify(customWords));
+}
+
+function saveGeminiKey(key) {
+  geminiApiKey = key;
+  localStorage.setItem("spellingChampGeminiKey", key);
+}
+
+function openSettings() {
+  $("settingsModal").hidden = false;
+  renderWordList();
+}
+
+function closeSettings() {
+  $("settingsModal").hidden = true;
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+  $(tabName + "-tab").classList.add("active");
+  $(tabName + "-content").classList.add("active");
+}
+
+function renderWordList() {
+  const container = $("wordListContainer");
+  const allWords = [...WORDS, ...customWords];
+
+  $("wordCount").textContent = `${allWords.length} words total (${customWords.length} custom)`;
+
+  container.innerHTML = "";
+  allWords.forEach((word, idx) => {
+    const isCustom = idx >= WORDS.length;
+    const div = document.createElement("div");
+    div.className = "word-item" + (isCustom ? " custom" : "");
+    div.innerHTML = `
+      <div class="word-content">
+        <div class="word-text">${word.w}${word.champ ? " 🏆" : ""}</div>
+        <div class="word-sentence">${word.s}</div>
+      </div>
+      <div class="word-actions">
+        ${isCustom ? '<button type="button" class="icon-btn danger" onclick="deleteWord(' + (idx - WORDS.length) + ')">🗑️</button>' : ''}
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function addWord(e) {
+  e.preventDefault();
+  const word = $("newWord").value.trim().toLowerCase();
+  const sentence = $("newSentence").value.trim();
+  const isChamp = $("newChamp").checked;
+
+  if (!word || !sentence) {
+    alert("Please enter both a word and a sentence.");
+    return;
+  }
+
+  customWords.push({ w: word, s: sentence, champ: isChamp });
+  saveCustomWords();
+  renderWordList();
+
+  $("newWord").value = "";
+  $("newSentence").value = "";
+  $("newChamp").checked = false;
+}
+
+function deleteWord(idx) {
+  if (confirm("Delete this word?")) {
+    customWords.splice(idx, 1);
+    saveCustomWords();
+    renderWordList();
+  }
+}
+
+function saveApiKey() {
+  const key = $("geminiKey").value.trim();
+  if (key) {
+    saveGeminiKey(key);
+    alert("API key saved!");
+  }
+}
+
+async function processImage() {
+  const file = $("imageInput").files[0];
+  if (!file) return;
+
+  if (!geminiApiKey) {
+    alert("Please enter your Gemini API key first!");
+    $("geminiKey").focus();
+    return;
+  }
+
+  const preview = $("imagePreview");
+  preview.innerHTML = '<img src="' + URL.createObjectURL(file) + '" alt="Preview">';
+  preview.hidden = false;
+
+  $("processing").hidden = false;
+  $("processBtn").disabled = true;
+
+  try {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result.split(',')[1];
+      const words = await extractWordsWithGemini(base64);
+
+      if (words && words.length > 0) {
+        customWords.push(...words);
+        saveCustomWords();
+        alert(`Added ${words.length} words!`);
+        renderWordList();
+        switchTab("manage");
+      } else {
+        alert("No words found in the image. Try a clearer photo.");
+      }
+
+      $("processing").hidden = true;
+      $("processBtn").disabled = false;
+      $("imageInput").value = "";
+      preview.hidden = true;
+    };
+    reader.readAsDataURL(file);
+  } catch (err) {
+    alert("Error processing image: " + err.message);
+    $("processing").hidden = true;
+    $("processBtn").disabled = false;
+  }
+}
+
+async function extractWordsWithGemini(base64Image) {
+  const prompt = `Extract spelling words from this image. Look for a list of spelling words, typically from a school worksheet or word list. Return ONLY a JSON array of objects with this format: [{"word": "example", "sentence": "Use it in a sentence."}]. If you see numbered words with example sentences, extract both. If there are no clear spelling words, return an empty array. Do not include any markdown formatting or explanation, just the raw JSON array.`;
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+        ]
+      }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("Gemini API error: " + response.statusText);
+  }
+
+  const data = await response.json();
+  const text = data.candidates[0].content.parts[0].text;
+
+  // Extract JSON from response (in case it's wrapped in markdown)
+  let jsonText = text.trim();
+  if (jsonText.startsWith("```")) {
+    jsonText = jsonText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  }
+
+  const parsed = JSON.parse(jsonText);
+
+  // Convert to our format
+  return parsed.map(item => ({
+    w: (item.word || item.w || "").toLowerCase().trim(),
+    s: item.sentence || item.s || `Example sentence for ${item.word || item.w}.`
+  })).filter(w => w.w);
+}
+
+// Update wordList() function to include custom words
+const originalWordList = wordList;
+window.wordList = function() {
+  const base = originalWordList();
+  if (level === "2") {
+    const withCustom = [...base, ...customWords];
+    return $("chk-challenge").checked ? withCustom : withCustom.filter(w => !w.champ);
+  }
+  return base;
+};
+
+$("settingsBtn").onclick = openSettings;
+$("closeSettings").onclick = closeSettings;
+$("settingsModal").onclick = (e) => { if (e.target.id === "settingsModal") closeSettings(); };
+$("manageTab").onclick = () => switchTab("manage");
+$("importTab").onclick = () => switchTab("import");
+$("addWordForm").addEventListener("submit", addWord);
+$("saveApiKeyBtn").onclick = saveApiKey;
+$("processBtn").onclick = processImage;
+$("imageInput").onchange = () => { $("processBtn").disabled = !$("imageInput").files[0]; };
+$("geminiKey").value = geminiApiKey;
+
 </script>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>SETTINGS</h2>
+      <button type="button" class="modal-close" id="closeSettings" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <button type="button" class="tab active" id="manage-tab">Manage Words</button>
+        <button type="button" class="tab" id="import-tab">Import from Photo</button>
+      </div>
+
+      <!-- Manage Words Tab -->
+      <div class="tab-content active" id="manage-content">
+        <form id="addWordForm" class="add-word-form">
+          <div class="form-group">
+            <label for="newWord">Word</label>
+            <input type="text" id="newWord" placeholder="e.g., example" required>
+          </div>
+          <div class="form-group">
+            <label for="newSentence">Sentence</label>
+            <textarea id="newSentence" placeholder="Use the word in a sentence..." required></textarea>
+          </div>
+          <div class="form-group">
+            <label class="toggle">
+              <input type="checkbox" id="newChamp">
+              Championship word
+            </label>
+          </div>
+          <button type="submit" class="btn-gold">Add Word</button>
+        </form>
+
+        <div class="word-count" id="wordCount"></div>
+        <div class="word-list" id="wordListContainer"></div>
+      </div>
+
+      <!-- Import from Photo Tab -->
+      <div class="tab-content" id="import-content">
+        <div class="api-key-section">
+          <div class="form-group">
+            <label for="geminiKey">Gemini API Key</label>
+            <input type="password" id="geminiKey" placeholder="Enter your Google Gemini API key">
+            <small>Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--gold);">aistudio.google.com/apikey</a></small>
+          </div>
+          <button type="button" class="btn-gold" id="saveApiKeyBtn">Save API Key</button>
+        </div>
+
+        <div class="camera-section">
+          <p style="color: var(--muted); font-weight: 700;">Take or upload a photo of a spelling word list</p>
+          <input type="file" id="imageInput" accept="image/*" capture="environment">
+          <button type="button" class="btn-gold big" onclick="$('imageInput').click()">📷 Choose Photo</button>
+          <div id="imagePreview" class="preview" hidden></div>
+          <div id="processing" class="processing" hidden>Processing with Gemini AI...</div>
+          <button type="button" class="btn-wide" id="processBtn" style="margin-top: 16px;" disabled>Extract Words</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 </body></html>
